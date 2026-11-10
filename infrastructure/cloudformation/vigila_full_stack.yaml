@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'VIGILA Cloud Surveillance - Optimized AWS Well-Architected Infrastructure (EC2 Graviton ASG, RDS Multi-AZ, S3 Lifecycle, SSM)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: production
+    Description: Environment name
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+  S3BucketName:
+    Type: String
+    Default: vigila-surveillance-recordings-archive-prod
+
+Resources:
+  # VPC & Networking
+  VigilaVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: vigila-cloud-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VigilaVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # S3 Bucket with Lifecycle Policy
+  SurveillanceRecordingsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: VigilaVideoTieringRule
+            Status: Enabled
+            Prefix: recordings/
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+              - TransitionInDays: 365
+                StorageClass: DEEP_ARCHIVE
+
+  # IAM Role for AWS Systems Manager (SSM)
+  EC2SSMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: VigilaEC2SSMInstanceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2SSMRole
+
+Outputs:
+  S3BucketNameOutput:
+    Description: S3 Bucket for Surveillance
+    Value: !Ref SurveillanceRecordingsBucket
+  VpcIdOutput:
+    Description: VPC ID
+    Value: !Ref VigilaVPC
+

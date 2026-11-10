@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VIGILA Cloud | Sistema de Videovigilancia y Optimización en AWS</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">V</div>
+      <div class="brand-text">
+        <h1>VIGILA CLOUD SURVEILLANCE</h1>
+        <span>AWS WELL-ARCHITECTED ARCHITECTURE &bull; REGION US-EAST-1</span>
+      </div>
+    </div>
+
+    <nav class="nav-tabs">
+      <button class="nav-btn active" onclick="switchTab('live-wall')">
+        <span>📹</span> Muro en Vivo
+      </button>
+      <button class="nav-btn" onclick="switchTab('s3-recordings')">
+        <span>💾</span> Grabaciones S3 Tiers
+      </button>
+      <button class="nav-btn" onclick="switchTab('alerts-center')">
+        <span>🚨</span> Alertas (<span id="alerts-count-badge">0</span>)
+      </button>
+      <button class="nav-btn" onclick="switchTab('aws-infra')">
+        <span>☁️</span> Infraestructura AWS & SSM
+      </button>
+      <button class="nav-btn" onclick="switchTab('cost-roi')">
+        <span>💰</span> Optimización de Costos
+      </button>
+    </nav>
+
+    <div class="header-status">
+      <div class="badge-status">
+        <span class="status-dot"></span>
+        AWS KMS & SSM ONLINE
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Body -->
+  <main>
+
+    <!-- 1. LIVE MONITORING WALL -->
+    <section id="tab-live-wall" class="tab-pane active">
+      <div class="section-header">
+        <h2><span>📹</span> Centro de Control y Monitoreo en Tiempo Real</h2>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-secondary" onclick="simulateAlert()">⚡ Simular Detección de Intruso</button>
+          <button class="btn-primary" onclick="loadCameras()">🔄 Actualizar Cámaras</button>
+        </div>
+      </div>
+
+      <div class="live-wall-layout">
+        <!-- Main Selected Player Screen -->
+        <div class="main-player-card">
+          <div class="player-screen-wrapper">
+            <img id="main-stream-player" src="/api/v1/cameras/1/stream" alt="Stream en vivo">
+          </div>
+          <div class="player-footer">
+            <div class="cam-meta">
+              <h3 id="player-cam-title">CAM-01: Acceso Principal y Recepción</h3>
+              <p id="player-cam-location">Edificio Central - Puerta 1 &bull; 1080p @ 30FPS &bull; Cifrado AWS KMS</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn-secondary" id="btn-toggle-rec" onclick="toggleRecordingCurrentCam()">⏹️ Pausar Grabación</button>
+              <button class="btn-primary" onclick="takeSnapshot()">📸 Captura Evidencia</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Camera Selection Sidebar -->
+        <div class="camera-grid-sidebar" id="camera-sidebar-list">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. S3 RECORDINGS & LIFECYCLE MANAGEMENT -->
+    <section id="tab-s3-recordings" class="tab-pane">
+      <div class="section-header">
+        <h2><span>💾</span> Archivo de Video en Amazon S3 y Ciclo de Vida de Almacenamiento</h2>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-primary" onclick="runLifecyclePolicy()">🚀 Ejecutar Política S3 Lifecycle</button>
+        </div>
+      </div>
+
+      <!-- Storage Tiers Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>S3 Standard (0-30 días)</span>
+            <span class="badge-tier badge-standard">$0.023/GB</span>
+          </div>
+          <div class="metric-val" id="metric-standard-gb">0.0 GB</div>
+          <div class="metric-sub">Acceso frecuente en caliente</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>S3 Standard-IA (31-90 días)</span>
+            <span class="badge-tier badge-ia">$0.0125/GB</span>
+          </div>
+          <div class="metric-val" id="metric-ia-gb">0.0 GB</div>
+          <div class="metric-sub">Ahorro: 46% vs Standard</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Glacier Flexible (91-365 días)</span>
+            <span class="badge-tier badge-glacier">$0.0036/GB</span>
+          </div>
+          <div class="metric-val" id="metric-glacier-gb">0.0 GB</div>
+          <div class="metric-sub">Ahorro: 84% vs Standard</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Deep Archive (> 365 días)</span>
+            <span class="badge-tier badge-deep-archive">$0.00099/GB</span>
+          </div>
+          <div class="metric-val" id="metric-deep-archive-gb">0.0 GB</div>
+          <div class="metric-sub">Ahorro: 96% (Retención Legal)</div>
+        </div>
+      </div>
+
+      <!-- Recordings Table -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cámara</th>
+              <th>Archivo S3 Key</th>
+              <th>Tamaño</th>
+              <th>Tier Actual S3</th>
+              <th>Fecha Grabación</th>
+              <th>Object Lock</th>
+              <th>Acciones AWS</th>
+            </tr>
+          </thead>
+          <tbody id="recordings-table-body">
+            <!-- Populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 3. SECURITY ALERTS -->
+    <section id="tab-alerts-center" class="tab-pane">
+      <div class="section-header">
+        <h2><span>🚨</span> Centro de Incidentes y Detección de Amenazas</h2>
+        <button class="btn-primary" onclick="simulateAlert()">⚡ Generar Nueva Alerta</button>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Hora UTC</th>
+              <th>Severidad</th>
+              <th>Tipo de Evento</th>
+              <th>Cámara Origen</th>
+              <th>Descripción del Incidente</th>
+              <th>Evidencia en S3</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="alerts-table-body">
+            <!-- Populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 4. AWS INFRASTRUCTURE & SYSTEMS MANAGER (SSM) -->
+    <section id="tab-aws-infra" class="tab-pane">
+      <div class="section-header">
+        <h2><span>☁️</span> Infraestructura AWS: Auto Scaling EC2, RDS Multi-AZ y Systems Manager</h2>
+        <button class="btn-primary" onclick="evaluateAutoScaling()">⚡ Evaluar Auto Scaling (Scale Out/In)</button>
+      </div>
+
+      <!-- Infrastructure Metrics Overview -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-header">EC2 Worker Fleet</div>
+          <div class="metric-val" id="ec2-fleet-count">3 Nodos</div>
+          <div class="metric-sub">AWS Graviton 3 (c7g.xlarge / c7g.large)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">Promedio CPU Cluster</div>
+          <div class="metric-val" id="ec2-avg-cpu">45.2%</div>
+          <div class="metric-sub">Target Tracking Policy: 70%</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">Amazon RDS Multi-AZ</div>
+          <div class="metric-val" style="color: var(--accent-green);">HEALTHY</div>
+          <div class="metric-sub">PostgreSQL 16 &bull; 2 Read Replicas</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">AWS Systems Manager</div>
+          <div class="metric-val" style="color: var(--accent-cyan);">100% ONLINE</div>
+          <div class="metric-sub">Gestión Remota sin SSH (Puerto 22 Cerrado)</div>
+        </div>
+      </div>
+
+      <!-- EC2 Fleet Table -->
+      <h3 style="margin-bottom: 0.8rem;">🖥️ Instancias de Procesamiento EC2 (Auto Scaling Group)</h3>
+      <div class="table-container" style="margin-bottom: 1.5rem;">
+        <table>
+          <thead>
+            <tr>
+              <th>Instance ID</th>
+              <th>Tipo de Instancia</th>
+              <th>Zona (AZ)</th>
+              <th>Estado</th>
+              <th>Uso CPU</th>
+              <th>Streams Activos</th>
+              <th>Modelo de Compra</th>
+              <th>SSM Agent</th>
+            </tr>
+          </thead>
+          <tbody id="ec2-fleet-table-body">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- AWS Systems Manager Interactive Console -->
+      <h3 style="margin-bottom: 0.8rem;">🛡️ Consola Remota de Diagnóstico AWS Systems Manager (Run Command)</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+        Ejecución segura de comandos administrativos en las instancias EC2 mediante el agente SSM. <strong>Zero-Trust: No requiere Bastion Host ni abrir el puerto 22 SSH en la VPC.</strong>
+      </p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">
+            AWS-RunShellScript &bull; Canal Seguro HTTPS (Port 443 Outbound)
+          </div>
+          <div style="display: flex; gap: 0.4rem;">
+            <button class="btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="runQuickSSM('uptime')">uptime</button>
+            <button class="btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="runQuickSSM('systemctl status vigila-agent')">status agent</button>
+            <button class="btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="runQuickSSM('df -h /')">disco /</button>
+            <button class="btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;" onclick="runQuickSSM('aws s3 ls')">s3 list</button>
+          </div>
+        </div>
+        <div class="terminal-body" id="ssm-terminal-output">
+[AWS Systems Manager Daemon] Conexión establecida con la flota de trabajadores EC2.
+Esperando comando... (Prueba los botones rápidos o escribe abajo)
+        </div>
+        <div class="terminal-input-bar">
+          <span style="color: var(--accent-cyan); font-family: monospace; padding: 0.3rem;">ssm-agent@vigila:~$ </span>
+          <input type="text" id="ssm-cmd-input" placeholder="Escribe un comando bash (ej. 'uptime' o 'systemctl status vigila-agent') y presiona Enter..." onkeydown="if(event.key==='Enter') executeSSMCommand()">
+          <button class="btn-primary" style="padding: 0.3rem 0.8rem;" onclick="executeSSMCommand()">Ejecutar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. COST ANALYSIS & ROI -->
+    <section id="tab-cost-roi" class="tab-pane">
+      <div class="section-header">
+        <h2><span>💰</span> Análisis Financiero y Optimización de Costos en AWS</h2>
+      </div>
+
+      <!-- Big Comparison -->
+      <div class="cost-comparison-row">
+        <!-- Pre-Migration Card -->
+        <div class="cost-card legacy">
+          <div class="cost-header">
+            <div>
+              <h3>Arquitectura Previa (No Optimizada)</h3>
+              <p style="color: var(--text-muted); font-size: 0.8rem;">Instancias On-Demand fijas, S3 Standard 100%, RDS Single-AZ</p>
+            </div>
+            <div class="cost-total" style="color: var(--accent-red);">$5,350 <span style="font-size: 1rem; font-weight: 500;">/mes</span></div>
+          </div>
+          <div class="cost-breakdown-list">
+            <div class="cost-item">
+              <span>EC2 Compute (Instancias x86 On-Demand 24/7)</span>
+              <strong style="color: #f87171;">$2,850.00</strong>
+            </div>
+            <div class="cost-item">
+              <span>Amazon S3 (Todo almacenado en Standard sin Lifecycle)</span>
+              <strong style="color: #f87171;">$1,400.00</strong>
+            </div>
+            <div class="cost-item">
+              <span>Base de Datos RDS (Instancia sobredimensionada)</span>
+              <strong style="color: #f87171;">$650.00</strong>
+            </div>
+            <div class="cost-item">
+              <span>Transferencia de Datos de Salida (Sin CDN CloudFront)</span>
+              <strong style="color: #f87171;">$450.00</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Optimized Card -->
+        <div class="cost-card optimized">
+          <div class="cost-header">
+            <div>
+              <h3>Arquitectura AWS Optimizada (VIGILA Cloud)</h3>
+              <p style="color: var(--accent-green); font-size: 0.8rem;">Auto Scaling + Graviton 3 + S3 Lifecycle + CloudFront</p>
+            </div>
+            <div class="cost-total" style="color: var(--accent-green);">$1,720 <span style="font-size: 1rem; font-weight: 500;">/mes</span></div>
+          </div>
+          <div class="cost-breakdown-list">
+            <div class="cost-item">
+              <span>EC2 Auto Scaling + Graviton 3 + Savings Plan (65.6% ahorro)</span>
+              <strong style="color: var(--accent-green);">$980.00</strong>
+            </div>
+            <div class="cost-item">
+              <span>Amazon S3 con Políticas de Ciclo de Vida y Glacier (80% ahorro)</span>
+              <strong style="color: var(--accent-green);">$280.00</strong>
+            </div>
+            <div class="cost-item">
+              <span>Amazon RDS Graviton Multi-AZ + 2 Read Replicas (47.7% ahorro)</span>
+              <strong style="color: var(--accent-green);">$340.00</strong>
+            </div>
+            <div class="cost-item">
+              <span>CloudFront Edge Caching + Systems Manager sin Bastion (73.3% ahorro)</span>
+              <strong style="color: var(--accent-green);">$120.00</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROI Summary Banner -->
+      <div class="metric-card" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(0, 240, 255, 0.15)); border-color: var(--accent-green); margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h3 style="font-size: 1.4rem; color: #ffffff;">Impacto Financiero Total de la Solución</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.2rem;">
+              Cumplimiento con el pilar de <strong>Optimización de Costos</strong> del AWS Well-Architected Framework.
+            </p>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 2.2rem; font-weight: 900; color: var(--accent-cyan);">$43,560 USD / año</div>
+            <div style="font-size: 0.85rem; color: var(--accent-green); font-weight: 700;">67.9% DE REDUCCIÓN DE GASTOS EN NUBE</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Historical Table -->
+      <h3 style="margin-bottom: 0.8rem;">📊 Historial Mensual de Migración y Reducción Presupuestaria</h3>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Periodo</th>
+              <th>Arquitectura</th>
+              <th>Cómputo EC2</th>
+              <th>Almacenamiento S3</th>
+              <th>Base Datos RDS</th>
+              <th>Transferencia Red</th>
+              <th>Gasto Total</th>
+              <th>Cámaras Soportadas</th>
+            </tr>
+          </thead>
+          <tbody id="cost-history-table-body">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal for S3 Presigned URL -->
+  <div class="modal-overlay" id="presigned-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 style="color: var(--accent-cyan);">🔐 URL Prefirmada Segura Amazon S3 (SigV4)</h3>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">
+        Esta URL temporal concede acceso de lectura directa y autenticada al objeto en S3 sin necesidad de hacer público el bucket ni compartir credenciales maestras.
+      </p>
+      <div class="url-box" id="presigned-url-content">Cargando...</div>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.8rem; color: var(--accent-orange);">⏳ Expira en: 15 minutos (900 seg)</span>
+        <button class="btn-primary" onclick="copyPresignedUrl()">📋 Copiar URL</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+
